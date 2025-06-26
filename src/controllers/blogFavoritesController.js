@@ -57,25 +57,36 @@ exports.addFavorite = (req, res) => {
     return res.status(400).json({ error: 'Missing user_id or article_id' });
   }
 
-  // 1. Kiểm tra bài viết có tồn tại
+  checkArticleExists(article_id, res, () => {
+    checkAlreadyFavorited(user_id, article_id, res, () => {
+      insertFavorite(user_id, article_id, res);
+    });
+  });
+};
+
+const checkArticleExists = (article_id, res, callback) => {
   const checkArticleSql = 'SELECT 1 FROM articles WHERE article_id = ?';
   db.query(checkArticleSql, [article_id], (err, articleResults) => {
     if (err) return res.status(500).json({ error: 'Error checking article' });
     if (articleResults.length === 0) return res.status(404).json({ error: 'Article not found' });
+    callback();
+  });
+};
 
-    // 2. Kiểm tra đã yêu thích chưa
-    const checkFavoriteSql = 'SELECT 1 FROM blog_favorites WHERE user_id = ? AND article_id = ?';
-    db.query(checkFavoriteSql, [user_id, article_id], (err, favResults) => {
-      if (err) return res.status(500).json({ error: 'Error checking favorite' });
-      if (favResults.length > 0) return res.status(409).json({ error: 'Already favorited' });
+const checkAlreadyFavorited = (user_id, article_id, res, callback) => {
+  const checkFavoriteSql = 'SELECT 1 FROM blog_favorites WHERE user_id = ? AND article_id = ?';
+  db.query(checkFavoriteSql, [user_id, article_id], (err, favResults) => {
+    if (err) return res.status(500).json({ error: 'Error checking favorite' });
+    if (favResults.length > 0) return res.status(409).json({ error: 'Already favorited' });
+    callback();
+  });
+};
 
-      // 3. Thêm vào bảng blog_favorites
-      const insertSql = 'INSERT INTO blog_favorites (user_id, article_id, created_at) VALUES (?, ?, NOW())';
-      db.query(insertSql, [user_id, article_id], (err) => {
-        if (err) return res.status(500).json({ error: 'Error inserting favorite' });
-        res.status(201).json({ message: 'Blog favorited successfully' });
-      });
-    });
+const insertFavorite = (user_id, article_id, res) => {
+  const insertSql = 'INSERT INTO blog_favorites (user_id, article_id, created_at) VALUES (?, ?, NOW())';
+  db.query(insertSql, [user_id, article_id], (err) => {
+    if (err) return res.status(500).json({ error: 'Error inserting favorite' });
+    res.status(201).json({ message: 'Blog favorited successfully' });
   });
 };
 
@@ -88,12 +99,21 @@ exports.getFavoriteByTitle = (req, res) => {
     return res.status(400).json({ error: 'Missing user_id or title' });
   }
 
+  this.fetchFavorites(req, res, user_id, title);
+};
+
+exports.fetchFavorites = (req, res, user_id, title) => {
   getArticleIdByTitle(title, (err, articleIds) => {
     if (err) return res.status(500).json({ error: 'Error finding article' });
     if (!articleIds || articleIds.length === 0) return res.status(404).json({ error: 'Article not found' });
 
-    const placeholders = articleIds.map(() => '?').join(',');
-    const sql = `
+    this.queryFavorites(req, res, user_id, articleIds);
+  });
+};
+
+exports.queryFavorites = (req, res, user_id, articleIds) => {
+  const placeholders = articleIds.map(() => '?').join(',');
+  const sql = `
       SELECT 
         f.id AS favorite_id,
         f.article_id,
@@ -110,17 +130,20 @@ exports.getFavoriteByTitle = (req, res) => {
       ORDER BY f.created_at DESC
     `;
 
-    db.query(sql, [user_id, ...articleIds], (err, results) => {
-      if (err) {
-        console.error('SQL error:', err);
-        return res.status(500).json({ error: 'Internal error' });
-      }
-
-      if (results.length === 0) return res.status(404).json({ error: 'Favorite not found' });
-
-      res.json({ favorites: results });
-    });
+  db.query(sql, [user_id, ...articleIds], (err, results) => {
+    this.handleQueryResult(req, res, err, results);
   });
+};
+
+exports.handleQueryResult = (req, res, err, results) => {
+  if (err) {
+    console.error('SQL error:', err);
+    return res.status(500).json({ error: 'Internal error' });
+  }
+
+  if (results.length === 0) return res.status(404).json({ error: 'Favorite not found' });
+
+  res.json({ favorites: results });
 };
 
 

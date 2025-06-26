@@ -68,25 +68,17 @@ exports.createArticle = (req, res) => {
 exports.updateArticle = (req, res) => {
   const { id } = req.params;
 
-  // Lấy bài viết hiện tại
+  // L?y bi vi?t hi?n t?i
   db.query('SELECT * FROM articles WHERE article_id = ?', [id], (err, results) => {
     if (err) return res.status(500).json({ error: 'Database error' });
     if (results.length === 0) return res.status(404).json({ message: 'Article not found' });
 
     const article = results[0];
 
-    // Nếu có dữ liệu mới thì lấy, nếu không giữ nguyên
-    const title = req.body.title || article.title;
-    const content = req.body.content || article.content;
-    const category = req.body.category || article.category;
-    const author = req.body.author || article.author;
+    const { title, content, category, author } = this.extractArticleData(req, article);
 
-    // Xử lý ảnh mới nếu có
-    let image_url = article.image_url;
-    if (req.file) {
-      image_url = '/uploads/' + req.file.filename;
-      // TODO: Xóa file ảnh cũ nếu cần
-    }
+    // X? l ?nh m?i n?u c
+    const image_url = this.processImage(req, article);
 
     const sql = `
       UPDATE articles 
@@ -99,6 +91,24 @@ exports.updateArticle = (req, res) => {
       res.json({ message: 'Article updated successfully' });
     });
   });
+};
+
+exports.extractArticleData = (req, article) => {
+  // N?u c d? li?u m?i th l?y, n?u khng gi? nguyn
+  const title = req.body.title || article.title;
+  const content = req.body.content || article.content;
+  const category = req.body.category || article.category;
+  const author = req.body.author || article.author;
+  return { title, content, category, author };
+};
+
+exports.processImage = (req, article) => {
+  let image_url = article.image_url;
+  if (req.file) {
+    image_url = '/uploads/' + req.file.filename;
+    // TODO: Xa file ?nh cu n?u c?n
+  }
+  return image_url;
 };
 
 
